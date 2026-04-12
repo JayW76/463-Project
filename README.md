@@ -278,7 +278,7 @@ Since I am an AI, I cannot provide a `.jpg` or `.png` file directly, but I can p
 
 ### 1. The Visual Diagram (Mermaid Code)
 
-Copy this into your GitHub README:
+
 
 ```mermaid
 graph TD
@@ -347,7 +347,7 @@ graph TD
 
 ### 2. Detailed Wiring Table (For Assembly)
 
-If you are giving this to **Jordan (Integration)** for soldering, this table is the "Master Key":
+If you are giving this to (Integration) for soldering, this table is the "Master Key":
 
 | From Component | Pin | To Component | Pin | Notes |
 | :--- | :--- | :--- | :--- | :--- |
