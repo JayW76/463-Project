@@ -272,3 +272,105 @@ end
 *   **Voltage Consistency**: Ensure the DRV2605L is powered by the **3.3V LDO**, not raw battery voltage.
 *   **Microphone Isolation**: Mount the INMP441 near the edge of the board, pointing toward the user's throat.
 *   **Short Data Lines**: Keep I2S and I2C wiring as short as possible to prevent ambient noise interference.
+Since I am an AI, I cannot provide a `.jpg` or `.png` file directly, but I can provide you with a **Mermaid.js diagram**. 
+
+
+
+### 1. The Visual Diagram (Mermaid Code)
+
+Copy this into your GitHub README:
+
+```mermaid
+graph TD
+    %% Power Section
+    subgraph Power_System [Power Management]
+        Battery[3.7V LiPo Battery] --> TP4056[TP4056 Charger / USB-C]
+        TP4056 --> MCP1700[MCP1700 3.3V LDO]
+        MCP1700 --> VCC_Rail[3.3V Power Rail]
+        GND[Common Ground]
+    end
+
+    %% ESP32-S3 Connections
+    subgraph MCU [ESP32-S3]
+        GPIO14[GPIO 14 - SCK]
+        GPIO15[GPIO 15 - WS]
+        GPIO16[GPIO 16 - SD]
+        GPIO8[GPIO 8 - SDA]
+        GPIO9[GPIO 9 - SCL]
+        MCU_VCC[3.3V / Vin]
+        MCU_GND[GND]
+    end
+
+    %% Microphone Connections
+    subgraph Audio_Input [INMP441 Microphone]
+        MIC_SCK[SCK]
+        MIC_WS[WS]
+        MIC_SD[SD]
+        MIC_L/R[L/R - GND]
+        MIC_VCC[VDD - 3.3V]
+    end
+
+    %% Haptic Connections
+    subgraph Haptic_Output [DRV2605L & Motor]
+        DRV_SDA[SDA]
+        DRV_SCL[SCL]
+        DRV_VCC[VIN - 3.3V]
+        Vib_Motor[10mm Pancake Motor]
+    end
+
+    %% Wiring Logic
+    VCC_Rail --- MCU_VCC
+    VCC_Rail --- MIC_VCC
+    VCC_Rail --- DRV_VCC
+    
+    GND --- MCU_GND
+    GND --- MIC_L/R
+    
+    %% Signal Wiring
+    GPIO14 --- MIC_SCK
+    GPIO15 --- MIC_WS
+    GPIO16 --- MIC_SD
+    
+    GPIO8 --- DRV_SDA
+    GPIO9 --- DRV_SCL
+    
+    %% Pull-up Resistors
+    R1[10k Pull-up] --- GPIO8
+    R1 --- VCC_Rail
+    R2[10k Pull-up] --- GPIO9
+    R2 --- VCC_Rail
+
+    DRV_SDA --- Vib_Motor
+```
+
+---
+
+### 2. Detailed Wiring Table (For Assembly)
+
+If you are giving this to **Jordan (Integration)** for soldering, this table is the "Master Key":
+
+| From Component | Pin | To Component | Pin | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Battery** | Positive (+) | **TP4056** | B+ | |
+| **Battery** | Negative (-) | **TP4056** | B- | |
+| **TP4056** | OUT+ | **MCP1700** | Vin | |
+| **MCP1700** | Vout | **3.3V Rail** | -- | Powers ESP32, Mic, and Driver |
+| **INMP441** | VDD | **3.3V Rail** | -- | |
+| **INMP441** | GND / L/R | **Ground Rail** | -- | Connect L/R to GND for Left Channel |
+| **INMP441** | SCK | **ESP32-S3** | GPIO 14 | I2S Clock |
+| **INMP441** | WS | **ESP32-S3** | GPIO 15 | I2S Word Select |
+| **INMP441** | SD | **ESP32-S3** | GPIO 16 | I2S Serial Data |
+| **DRV2605L** | VIN | **3.3V Rail** | -- | |
+| **DRV2605L** | GND | **Ground Rail** | -- | |
+| **DRV2605L** | SDA | **ESP32-S3** | GPIO 8 | **Requires 10kΩ Pull-up to 3.3V** |
+| **DRV2605L** | SCL | **ESP32-S3** | GPIO 9 | **Requires 10kΩ Pull-up to 3.3V** |
+| **DRV2605L** | OUT+ / - | **Pancake Motor** | Red / Blue | |
+
+---
+
+### 3. Assembly Tips for the Team:
+
+1.  **I2C Pull-ups (Critical):** Do not skip the **10kΩ resistors**. Connect one end of a resistor to **GPIO 8 (SDA)** and the other end to **3.3V**. Do the same for **GPIO 9 (SCL)**. Without these, the ESP32 will "hang" when trying to talk to the haptic motor.
+2.  **Star Grounding:** Ensure all "GND" pins meet at a single point (the TP4056 OUT- or MCP1700 GND pin) to reduce electrical noise in the audio signal.
+3.  **LDO Placement:** The **MCP1700** is sensitive to heat. Solder it last, and ensure it is not touching the battery or the ESP32-S3 (both of which get warm).
+4.  **Wire Length:** Keep the 3 wires going to the **INMP441 Microphone** (SCK, WS, SD) as short as possible. I2S signals are high-speed and can pick up "hum" if the wires are too long.
