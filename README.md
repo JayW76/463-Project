@@ -275,8 +275,8 @@ end
 Since I am an AI, I cannot provide a `.jpg` or `.png` file directly, but I can provide you with a **Mermaid.js diagram**. 
 
 
-
-### 1. The Visual Diagram (Mermaid Code)
+---
+### 8. The Visual Diagram (Mermaid Code)
 
 
 
@@ -345,7 +345,7 @@ graph TD
 
 ---
 
-### 2. Detailed Wiring Table (For Assembly)
+### 9. Detailed Wiring Table (For Assembly)
 
 If you are giving this to (Integration) for soldering, this table is the "Master Key":
 
@@ -368,7 +368,7 @@ If you are giving this to (Integration) for soldering, this table is the "Master
 
 ---
 
-### 3. Assembly Tips for the Team:
+### 10. Assembly Tips for the Team:
 
 1.  **I2C Pull-ups (Critical):** Do not skip the **10kΩ resistors**. Connect one end of a resistor to **GPIO 8 (SDA)** and the other end to **3.3V**. Do the same for **GPIO 9 (SCL)**. Without these, the ESP32 will "hang" when trying to talk to the haptic motor.
 2.  **Star Grounding:** Ensure all "GND" pins meet at a single point (the TP4056 OUT- or MCP1700 GND pin) to reduce electrical noise in the audio signal.
