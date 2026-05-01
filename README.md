@@ -1,54 +1,79 @@
 
-
 ***
 
-# EGEC 463: Voice-Based Stress Analysis
+# EGEC 463: Voice-Based Stress Analysis (Group 6)
 **Author:** Willie Jarin
 
-This project bridges the gap between hardware signal acquisition and software-based digital signal processing (DSP). This document outlines the foundational code for the ESP32-S3 firmware, a Python data logger, and the MATLAB analysis scripts.
+## 1. Project Overview
+This project features a neck-worn wearable capable of detecting physiological stress through vocal micro-tremors—specifically **Jitter** (frequency variation) and **Shimmer** (amplitude variation). 
+
+The system operates as a **Real-Time Closed-Loop**:
+1. **Stage 1 (Capture):** ESP32-S3 captures audio via I2S and streams raw binary data at **921,600 Baud**.
+2. **Stage 2 (Bridge):** A Python script encapsulates the high-speed stream into a `.wav` file locally.
+3. **Stage 3 (Analysis):** A MATLAB engine extracts biomarkers, visualizes data, and executes detection logic.
+4. **Stage 4 (Feedback):** A haptic command is pushed back to the wearable to trigger a vibration alert.
 
 ---
 
-## 1. ESP32-S3 Firmware (Audio Capture)
+## 2. Hardware Specifications & BOM
 
-The following code configures the **INMP441** microphone using the **I2S (Inter-IC Sound)** protocol. It captures raw audio data and transmits it over Serial to MATLAB for analysis.
+### Unified Wiring Key
+| Component | Signal Type | ESP32-S3 Pin | Purpose |
+| :--- | :--- | :--- | :--- |
+| **INMP441 Mic** | **I2S (Digital Audio)** | GPIO 14, 15, 16 | Captures vocal biomarkers. |
+| **DRV2605L Driver** | **I2C (Control)** | GPIO 8, 9 | Controls haptic feedback (Req. 10k Pull-ups). |
+| **MCP1700 LDO** | **Power** | 3.3V Out | Regulates battery to steady 3.3V. |
+| **TP4056 Module** | **Power** | LiPo & USB-C | Safely charges the 3.7V battery. |
+
+### Bill of Materials (Total Cost: $73.86)
+| Item | Manufacturer/Description | Cost |
+| :--- | :--- | :--- |
+| **Main MCU** | Espressif ESP32-S3-DevKitC-1 | $15.00 |
+| **MEMS Mic** | INMP441 Breakout Board | $6.99 |
+| **Haptic Driver** | TI DRV2605L Breakout | $7.95 |
+| **Power** | 3.7V 1000mAh LiPo & TP4056 Charger | $16.48 |
+| **Connectivity** | 22AWG Wire / 10k Resistors / Perfboard | $18.95 |
+
+---
+
+## 3. Firmware: ESP32-S3 (`EGEC463_ProjectIno.cpp`)
+*Configured for 16kHz/32-bit I2S acquisition and I2C haptic control.*
 
 ```cpp
-/*
-* Project: Neck-Worn Wearable for Voice-Based Stress Analysis
-* Hardware: ESP32-S3, INMP441 MEMS Microphone
-*/
-
 #include <driver/i2s.h>
+#include <Wire.h>
+#include "Adafruit_DRV2605.h"
 
-// I2S Pin Configuration
 #define I2S_WS 15
 #define I2S_SD 16
 #define I2S_SCK 14
 #define I2S_PORT I2S_NUM_0
-#define BUFFER_LEN 1024
+#define BUFFER_LEN 512
+#define I2C_SDA 8
+#define I2C_SCL 9
+
+Adafruit_DRV2605 drv;
 
 void setup() {
-  Serial.begin(115200);
-  
-  // I2S Configuration
+  Serial.begin(921600); // High-speed binary link
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (drv.begin()) {
+    drv.selectLibrary(1);
+    drv.setMode(DRV2605_MODE_INTTRIG);
+  }
+
   const i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-    .sample_rate = 16000, // 16kHz sampling rate for voice
+    .sample_rate = 16000,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-    .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
     .dma_buf_count = 8,
-    .dma_buf_len = BUFFER_LEN,
-    .use_apll = false
+    .dma_buf_len = BUFFER_LEN
   };
 
   const i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_SCK,
-    .ws_io_num = I2S_WS,
-    .data_out_num = -1, // Not used
-    .data_in_num = I2S_SD
+    .bck_io_num = I2S_SCK, .ws_io_num = I2S_WS, .data_out_num = -1, .data_in_num = I2S_SD
   };
 
   i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
@@ -57,15 +82,17 @@ void setup() {
 
 void loop() {
   int32_t samples[BUFFER_LEN];
-  size_t bytes_read;
+  size_t bytes_read = 0;
+  i2s_read(I2S_PORT, samples, sizeof(samples), &bytes_read, portMAX_DELAY);
 
-  // Read data from I2S
-  i2s_read(I2S_PORT, &samples, sizeof(samples), &bytes_read, portMAX_DELAY);
-
-  // Send raw data to Serial for MATLAB processing
   if (bytes_read > 0) {
-    for (int i = 0; i < bytes_read / 4; i++) {
-      Serial.println(samples[i]);
+    // Corrected to Binary Write for high-speed DSP sync
+    Serial.write((uint8_t*)samples, bytes_read); 
+  }
+
+  if (Serial.available() > 0) {
+    if (Serial.read() == 'S') { // Stress command from MATLAB
+      drv.setWaveform(0, 47); drv.setWaveform(1, 0); drv.go();
     }
   }
 }
@@ -73,172 +100,76 @@ void loop() {
 
 ---
 
-## 2. MATLAB Signal Processing Script
-
-This script handles the digital band-pass filtering (300Hz–3kHz) and extracts the fundamental frequency (pitch), a key biomarker for stress.
-
-```matlab
-% Project: Voice-Based Stress Analysis Preprocessing
-% Purpose: Filter noise and extract vocal prosody features
-
-fs = 16000; % Sampling frequency matching ESP32
-duration = 5; % 5-second window
-
-% 1. Data Acquisition (Simulated or Serial)
-% s = serialport('COM3', 115200);
-% rawData = read(s, fs * duration, "int32");
-
-% 2. Digital Band-Pass Filter (300Hz - 3kHz)
-bpFilter = designfilt('bandpassiir', 'FilterOrder', 8, ...
- 'HalfPowerFrequency1', 300, 'HalfPowerFrequency2', 3000, ...
- 'SampleRate', fs);
-filteredAudio = filter(bpFilter, double(rawData));
-
-% 3. Feature Extraction: Pitch (Vocal Prosody)
-[f0, idx] = pitch(filteredAudio, fs);
-
-% 4. Visualization
-subplot(2,1,1);
-plot(filteredAudio);
-title('Filtered Vocal Signal (300Hz-3kHz)');
-xlabel('Samples'); ylabel('Amplitude');
-
-subplot(2,1,2);
-plot(f0);
-title('Vocal Pitch Tracking (F0)');
-xlabel('Frame Index'); ylabel('Frequency (Hz)');
-
-% 5. Simple Stress Logic
-avgPitch = mean(f0, 'omitnan');
-if avgPitch > threshold 
-    disp('Feedback: Elevated Stress Detected');
-else
-    disp('Feedback: Calm State');
-end
-```
-
----
-
-## 3. Project Roadmap & Implementation
-
-### Recommended File Structure
-*   **/Firmware**: Contains the `.ino` file for the ESP32-S3.
-*   **/MATLAB**: Analysis scripts for pitch, tone, and loudness.
-*   **/Data**: Storage for raw `.csv` or `.wav` samples.
-*   **/Hardware**: 3D print files (STL) and circuit schematics.
-
-### Implementation Checklist (Weeks 6-11)
-*   **Data Capture**: Ensure the INMP441 is configured for 16kHz to capture the full range of human voice (300Hz–3kHz).
-*   **Privacy Guardrails**: Process data locally or via direct transfer to MATLAB without cloud uploading.
-*   **Noise Isolation**: Apply Digital Band-Pass Filters in MATLAB immediately to strip out background hum.
-
-### Regulatory Note
-This is positioned as a **wellness device**, not a medical tool. To avoid FDA Class II requirements, ensure presentation materials emphasize "stress awareness" rather than a "medical diagnosis."
-
----
-
-## 4. Hardware Integration: Haptic Feedback
-
-Using a **DRV2605L Haptic Driver** and a **Vibration Motor**, the system provides physical feedback when stress is detected.
-
-### Haptic Driver Code (ESP32)
-```cpp
-#include <Wire.h>
-#include "Adafruit_DRV2605.h"
-
-Adafruit_DRV2605 drv;
-
-void setupHaptics() {
-  drv.begin();
-  drv.selectLibrary(1);
-  drv.setMode(DRV2605_MODE_INTTRIG); 
-}
-
-void triggerStressAlert() {
-  drv.setWaveform(0, 47); // "Sharp Tick" - alert for elevated stress
-  drv.setWaveform(1, 0);  // End waveform
-  drv.go();
-}
-```
-
-### Feedback Reception Code
-Add this to your main `loop()` to process the signal from MATLAB:
-
-```cpp
-if (Serial.available() > 0) {
-  char command = Serial.read();
-  if (command == 'S') { // 'S' for Stress detected
-    triggerStressAlert();
-    Serial.println("Haptic Alert Triggered");
-  }
-}
-```
-
----
-
-## 5. The Serial Bridge (Python Data Logger)
-
-This script captures the raw I2S data from the ESP32 via USB and saves it as a `.wav` file for permanent storage.
+## 4. Serial Bridge: Python (`logger.py`)
+*Acts as a secure intermediary for local file generation.*
 
 ```python
 import serial
 import wave
-import struct
 
-# Configuration
-SERIAL_PORT = 'COM3' 
-BAUD_RATE = 115200
-SAMPLE_RATE = 16000
-OUTPUT_FILE = "vocal_sample_raw.wav"
+PORT = 'COM4'      # Update to your ESP32 port
+BAUD = 921600      
+FS = 16000         
+DURATION = 5       
+FILENAME = "vocal_sample_raw.wav"
 
-ser = serial.Serial(SERIAL_PORT, BAUD_RATE)
-print(f"Recording from {SERIAL_PORT}...")
-
-with wave.open(OUTPUT_FILE, 'wb') as wav_file:
-    wav_file.setnchannels(1) 
-    wav_file.setsampwidth(4) # 32-bit
-    wav_file.setframerate(SAMPLE_RATE)
-    try:
-        while True:
-            line = ser.readline().decode('utf-8').strip()
-            if line:
-                try:
-                    sample = int(line)
-                    wav_file.writeframes(struct.pack('<i', sample))
-                except ValueError:
-                    continue
-    except KeyboardInterrupt:
-        print("Recording stopped. File saved.")
-        ser.close()
+try:
+    ser = serial.Serial(PORT, BAUD, timeout=2)
+    ser.flushInput()
+    print(f"READY: Recording {DURATION}s window...")
+    raw_data = ser.read(FS * DURATION * 4) 
+    
+    with wave.open(FILENAME, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(4) # 32-bit
+        wf.setframerate(FS)
+        wf.writeframes(raw_data)
+    print("DONE: File saved.")
+    ser.close()
+except Exception as e:
+    print(f"ERROR: {e}")
 ```
 
 ---
 
-## 6. Biomarker Analysis: Jitter & Shimmer
-
-This MATLAB script identifies "micro-tremors" in the vocal folds—**Jitter** (frequency variation) and **Shimmer** (amplitude variation)—which indicate anxiety.
+## 5. DSP Analysis: MATLAB (`JitterShimmer.m`)
+*Extracts F0 and Amplitude Envelope to determine stress states.*
 
 ```matlab
 [audio, fs] = audioread('vocal_sample_raw.wav');
-
-% 1. Filter & Extract Pitch/Amplitude
 bpFilter = designfilt('bandpassiir', 'FilterOrder', 8, ...
- 'HalfPowerFrequency1', 300, 'HalfPowerFrequency2', 3000, 'SampleRate', fs);
+    'HalfPowerFrequency1', 300, 'HalfPowerFrequency2', 3000, 'SampleRate', fs);
 cleanAudio = filter(bpFilter, audio);
-[f0, ~] = pitch(cleanAudio, fs);
-[upperEnv, ~] = envelope(cleanAudio);
 
-% 2. Calculate Biomarkers
+[f0, f0_idx] = pitch(cleanAudio, fs);
+upperEnv = envelope(cleanAudio, 100, 'rms');
+
 jitter = mean(abs(diff(f0)), 'omitnan') / mean(f0, 'omitnan');
 shimmer = mean(abs(diff(upperEnv))) / mean(upperEnv);
 
-% 3. Stress Logic
-if jitter > 0.02 || shimmer > 0.15 
-    disp('Result: Elevated Stress Level Detected');
+if jitter > 0.02 || shimmer > 0.15
+    write(serialport('COM4', 921600), 'S', "char"); % Matches logger.py port
+    statusStr = 'STRESS DETECTED';
 else
-    disp('Result: Calm State');
+    statusStr = 'CALM';
 end
 ```
+
+---
+
+## 6. Regulatory Note & References
+This device is a **Wellness Device** intended for stress awareness, following **FDA Guidance [4]**. It is not intended for medical diagnosis.
+
+**References (IEEE):**
+*   **[1]** Espressif Systems, "ESP32-S3 Technical Reference Manual," 2022.
+*   **[2]** InvenSense, "INMP441 Digital MEMS Microphone," 2014.
+*   **[3]** P. Boersma, "Praat, a system for doing phonetics by computer," 2001.
+*   **[4]** FDA, "General Wellness: Policy for Low Risk Devices," 2019.
+*   **[5]** A. Teixeira et al., "Vocal Acoustic Markers for Stress," *IEEE JBHI*, 2021.
+
+
+---
+
 
 ---
 
