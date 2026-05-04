@@ -36,7 +36,7 @@ The system operates as a **Real-Time Closed-Loop**:
 
 ---
 
-## 3. Firmware: ESP32-S3 (`EGEC463_ProjectIno.cpp`)
+## 3. Firmware: ESP32-S3 (`EGEC463_Project.ino`)
 *Configured for 16kHz/32-bit I2S acquisition and I2C haptic control.*
 
 ```cpp
@@ -166,10 +166,6 @@ This device is a **Wellness Device** intended for stress awareness, following **
 *   **[3]** P. Boersma, "Praat, a system for doing phonetics by computer," 2001.
 *   **[4]** FDA, "General Wellness: Policy for Low Risk Devices," 2019.
 *   **[5]** A. Teixeira et al., "Vocal Acoustic Markers for Stress," *IEEE JBHI*, 2021.
-
-
----
-
 
 ---
 
