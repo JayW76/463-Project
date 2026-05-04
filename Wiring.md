@@ -6,7 +6,8 @@
 This diagram shows the connection between the power system, the ESP32-S3 microcontroller, the audio input, and the haptic output.
 
 ```mermaid
-graph TD
+    graph TD
+    %% Power Section
     subgraph Power_System [Power Management]
         Battery[3.7V LiPo Battery] --> TP4056[TP4056 Charger / USB-C]
         TP4056 --> MCP1700[MCP1700 3.3V LDO]
@@ -14,6 +15,7 @@ graph TD
         GND[Common Ground]
     end
 
+    %% ESP32-S3 Connections
     subgraph MCU [ESP32-S3]
         GPIO14[GPIO 14 - SCK]
         GPIO15[GPIO 15 - WS]
@@ -24,6 +26,7 @@ graph TD
         MCU_GND[GND]
     end
 
+    %% Microphone Connections
     subgraph Audio_Input [INMP441 Microphone]
         MIC_SCK[SCK]
         MIC_WS[WS]
@@ -32,20 +35,25 @@ graph TD
         MIC_VCC[VDD - 3.3V]
     end
 
+    %% Haptic Connections
     subgraph Haptic_Output [DRV2605L & Motor]
         DRV_SDA[SDA]
         DRV_SCL[SCL]
         DRV_VCC[VIN - 3.3V]
+        DRV_OUT[OUT +/-]
         Vib_Motor[10mm Pancake Motor]
     end
 
+    %% Power Wiring
     VCC_Rail --- MCU_VCC
     VCC_Rail --- MIC_VCC
     VCC_Rail --- DRV_VCC
     
     GND --- MCU_GND
     GND --- MIC_L/R
+    GND --- DRV_GND[GND]
     
+    %% Signal Wiring
     GPIO14 --- MIC_SCK
     GPIO15 --- MIC_WS
     GPIO16 --- MIC_SD
@@ -53,9 +61,12 @@ graph TD
     GPIO8 --- DRV_SDA
     GPIO9 --- DRV_SCL
     
+    %% Output to Motor
+    DRV_OUT --- Vib_Motor
+
+    %% Pull-up Resistors
     R1[10k Pull-up] --- GPIO8
     R1 --- VCC_Rail
     R2[10k Pull-up] --- GPIO9
     R2 --- VCC_Rail
-
-    DRV_SDA --- Vib_Motor
+   
