@@ -198,16 +198,8 @@ This device is a **Wellness Device** intended for stress awareness, following **
 | **MCP1700 LDO** | **Power** | 3.3V Out | Regulates battery to steady 3.3V. |
 | **TP4056 Module** | **Power** | LiPo & USB-C | Safely charges the 3.7V battery. |
 
-### Critical Wiring Requirements
-*   **Pull-up Resistors**: Connect **10kΩ resistors** between the SDA/SCL lines and 3.3V. Without these, the I2C bus will float.
-*   **Voltage Consistency**: Ensure the DRV2605L is powered by the **3.3V LDO**, not raw battery voltage.
-*   **Microphone Isolation**: Mount the INMP441 near the edge of the board, pointing toward the user's throat.
-*   **Short Data Lines**: Keep I2S and I2C wiring as short as possible to prevent ambient noise interference.
-Since I am an AI, I cannot provide a `.jpg` or `.png` file directly, but I can provide you with a **Mermaid.js diagram**. 
-
-
 ---
-### 8. The Visual Diagram (Mermaid Code)
+### 8. The Visual Diagram
 
 
 
@@ -296,12 +288,3 @@ If you are giving this to (Integration) for soldering, this table is the "Master
 | **DRV2605L** | SDA | **ESP32-S3** | GPIO 8 | **Requires 10kΩ Pull-up to 3.3V** |
 | **DRV2605L** | SCL | **ESP32-S3** | GPIO 9 | **Requires 10kΩ Pull-up to 3.3V** |
 | **DRV2605L** | OUT+ / - | **Pancake Motor** | Red / Blue | |
-
----
-
-### 10. Assembly Tips for the Team:
-
-1.  **I2C Pull-ups (Critical):** Do not skip the **10kΩ resistors**. Connect one end of a resistor to **GPIO 8 (SDA)** and the other end to **3.3V**. Do the same for **GPIO 9 (SCL)**. Without these, the ESP32 will "hang" when trying to talk to the haptic motor.
-2.  **Star Grounding:** Ensure all "GND" pins meet at a single point (the TP4056 OUT- or MCP1700 GND pin) to reduce electrical noise in the audio signal.
-3.  **LDO Placement:** The **MCP1700** is sensitive to heat. Solder it last, and ensure it is not touching the battery or the ESP32-S3 (both of which get warm).
-4.  **Wire Length:** Keep the 3 wires going to the **INMP441 Microphone** (SCK, WS, SD) as short as possible. I2S signals are high-speed and can pick up "hum" if the wires are too long.
