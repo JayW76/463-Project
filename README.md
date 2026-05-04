@@ -132,27 +132,86 @@ except Exception as e:
 
 ---
 
-## 5. DSP Analysis: MATLAB (`JitterShimmer.m`)
-*Extracts F0 and Amplitude Envelope to determine stress states.*
+## 5. DSP Analysis& Visualization: MATLAB (JitterShimmer.m)
+This script acts as the "DSP Engine." It imports the generated .wav file, applies an 8th-order IIR bandpass filter to isolate the human voice, and extracts the cycle-to-cycle biomarkers. It then visualizes the results to match the project's aesthetic.
 
 ```matlab
-[audio, fs] = audioread('vocal_sample_raw.wav');
+%% EGEC 463: Vocal Stress Analysis Visualization
+clear; clc; close all;
+
+% --- 1. SETUP & FILE CHECK ---
+% Ensures MATLAB looks in the correct local folder for the audio file
+current_script_path = fileparts(mfilename('fullpath'));
+cd(current_script_path); 
+
+filename = 'vocal_sample_raw.wav';
+if ~isfile(filename)
+    error('FILE NOT FOUND! Run the Python script first to record audio.');
+end
+
+% --- 2. DATA IMPORT & FILTERING ---
+[audio, fs] = audioread(filename);
+t = (0:length(audio)-1)/fs; % Time vector for plotting
+
+% 8th Order Bandpass (300Hz - 3kHz) to isolate human voice range
 bpFilter = designfilt('bandpassiir', 'FilterOrder', 8, ...
-    'HalfPowerFrequency1', 300, 'HalfPowerFrequency2', 3000, 'SampleRate', fs);
+    'HalfPowerFrequency1', 300, 'HalfPowerFrequency2', 3000, ...
+    'SampleRate', fs);
 cleanAudio = filter(bpFilter, audio);
 
+% --- 3. FEATURE EXTRACTION ---
+% Extract Pitch (f0) and Amplitude Envelope
 [f0, f0_idx] = pitch(cleanAudio, fs);
 upperEnv = envelope(cleanAudio, 100, 'rms');
 
+% Calculate Jitter (Frequency Variation)
 jitter = mean(abs(diff(f0)), 'omitnan') / mean(f0, 'omitnan');
+
+% Calculate Shimmer (Amplitude Variation)
 shimmer = mean(abs(diff(upperEnv))) / mean(upperEnv);
 
+% --- 4. STRESS LOGIC & FEEDBACK ---
 if jitter > 0.02 || shimmer > 0.15
-    write(serialport('COM4', 921600), 'S', "char"); % Matches logger.py port
+    decision = 'S';
     statusStr = 'STRESS DETECTED';
+    statusColor = [1 0.2 0.2]; % Reddish for stress
 else
-    statusStr = 'CALM';
+    decision = 'C';
+    statusStr = 'CALM / NORMAL';
+    statusColor = [0 1 1]; % Cyan for calm
 end
+
+% Send Command back to ESP32 via high-speed Serial link
+try
+    s = serialport('COM3', 921600);
+    write(s, decision, "char");
+    clear s; 
+catch
+    disp('Warning: Serial Port busy or disconnected.');
+end
+
+% --- 5. VISUALIZATION (Matches Presentation Slide 15) ---
+figure('Color', 'k', 'Name', 'Vocal Biomarker Analysis');
+
+% TOP PLOT: Filtered Waveform & Envelope
+subplot(2,1,1);
+plot(t, cleanAudio, 'Color', [0.5 0.5 0.5]); hold on; 
+plot(t, upperEnv, 'Color', [1 1 0], 'LineWidth', 1.5); 
+title('Top Plot: Filtered Waveform & Amplitude Envelope', 'Color', 'w');
+ylabel('Amplitude', 'Color', 'w');
+set(gca, 'Color', 'k', 'XColor', 'w', 'YColor', 'w', 'GridColor', [0.2 0.2 0.2]);
+legend('Filtered Audio', 'Shimmer Envelope', 'TextColor', 'w');
+grid on;
+
+% BOTTOM PLOT: Pitch Tracking (F0)
+subplot(2,1,2);
+t_f0 = f0_idx / fs; 
+plot(t_f0, f0, 'Color', [0 1 1], 'LineWidth', 2); 
+title(['Bottom Plot: F0 Pitch Tracking - STATUS: ', statusStr], 'Color', statusColor);
+ylabel('Frequency (Hz)', 'Color', 'w');
+xlabel('Time (seconds)', 'Color', 'w');
+set(gca, 'Color', 'k', 'XColor', 'w', 'YColor', 'w', 'GridColor', [0.2 0.2 0.2]);
+grid on;
 ```
 
 ---
@@ -234,16 +293,18 @@ graph TD
         DRV_SDA[SDA]
         DRV_SCL[SCL]
         DRV_VCC[VIN - 3.3V]
+        DRV_OUT[OUT +/-]
         Vib_Motor[10mm Pancake Motor]
     end
 
-    %% Wiring Logic
+    %% Power Wiring
     VCC_Rail --- MCU_VCC
     VCC_Rail --- MIC_VCC
     VCC_Rail --- DRV_VCC
     
     GND --- MCU_GND
     GND --- MIC_L/R
+    GND --- DRV_GND[GND]
     
     %% Signal Wiring
     GPIO14 --- MIC_SCK
@@ -253,13 +314,14 @@ graph TD
     GPIO8 --- DRV_SDA
     GPIO9 --- DRV_SCL
     
+    %% Output to Motor
+    DRV_OUT --- Vib_Motor
+
     %% Pull-up Resistors
     R1[10k Pull-up] --- GPIO8
     R1 --- VCC_Rail
     R2[10k Pull-up] --- GPIO9
     R2 --- VCC_Rail
-
-    DRV_SDA --- Vib_Motor
 ```
 
 ---
